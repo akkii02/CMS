@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import api from '../services/api';
 
 export default function Login({ onLogin }) {
     const [mode, setMode] = useState('login'); // 'login' or 'register'
@@ -13,31 +14,23 @@ export default function Login({ onLogin }) {
         setError('');
         setLoading(true);
 
-        const url = mode === 'login'
-            ? 'https://cms-backend-csry.onrender.com/api/auth/login'
-            : 'https://cms-backend-csry.onrender.com/api/auth/register';
-
+        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
         const body = mode === 'login'
             ? { email, password }
             : { email, password, companyName };
 
         try {
-            console.log("url", url);
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            const data = await res.json();
+            const res = await api.post(endpoint, body);
+            const data = res.data;
 
-            if (res.ok && data.token) {
+            if (data.token) {
                 localStorage.setItem('user', JSON.stringify(data));
                 onLogin(data);
             } else {
-                setError(data.message || 'Authentication failed');
+                setError('Authentication failed');
             }
         } catch (err) {
-            setError('Network error. Is backend running?');
+            setError(err.response?.data?.message || 'Network error. Is backend running?');
         } finally {
             setLoading(false);
         }

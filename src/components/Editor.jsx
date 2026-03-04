@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -218,11 +218,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         if (!aiPrompt.trim()) return;
         setIsAiLoading(true);
         try {
-            const userData = JSON.parse(localStorage.getItem('user'));
-            const token = userData?.token;
-            const res = await axios.post('/api/ai/suggest-titles', { prompt: aiPrompt }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.post('/api/ai/suggest-titles', { prompt: aiPrompt });
             setSuggestedTitles(res.data.titles);
             setAiStep(2);
         } catch (err) {
@@ -238,11 +234,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         if (!selectedAiTitle) return;
         setIsAiLoading(true);
         try {
-            const userData = JSON.parse(localStorage.getItem('user'));
-            const token = userData?.token;
-            const res = await axios.post('/api/ai/generate-blog', { title: selectedAiTitle }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.post('/api/ai/generate-blog', { title: selectedAiTitle });
             setAiGeneratedContent(res.data.contentHtml);
             setAiStep(3);
         } catch (err) {
@@ -258,11 +250,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         if (!aiPrompt.trim()) return;
         setIsBatchLoading(true);
         try {
-            const userData = JSON.parse(localStorage.getItem('user'));
-            const token = userData?.token;
-            const res = await axios.post('/api/ai/batch-generate', { prompt: aiPrompt, count: 5 }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.post('/api/ai/batch-generate', { prompt: aiPrompt, count: 5 });
             alert(res.data.message);
             // Optionally redirect to dashboard or show success state
             setAiPrompt('');

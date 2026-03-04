@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { ArrowLeft } from 'lucide-react';
 
 export default function PreviewPage() {
@@ -10,18 +10,7 @@ export default function PreviewPage() {
     useEffect(() => {
         const fetchBlogs = async () => {
             try {
-                const userData = JSON.parse(localStorage.getItem('user'));
-                const token = userData?.token;
-
-                if (!token) {
-                    console.error("No authentication token found.");
-                    setLoading(false);
-                    return;
-                }
-
-                const res = await axios.get('/api/blogs', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                const res = await api.get('/api/blogs');
                 setBlogs(res.data);
 
                 // Allow direct linking to a specific blog via hash

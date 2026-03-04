@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import { Sparkles, ArrowRight, Heart, MessageSquare, Send, Globe } from 'lucide-react';
 
 const PublicFeedPage = () => {
@@ -18,7 +18,7 @@ const PublicFeedPage = () => {
     useEffect(() => {
         const fetchFeed = async () => {
             try {
-                const res = await axios.get('/api/feed');
+                const res = await api.get('/api/feed');
                 setFeed(res.data);
             } catch (err) { }
             setFeedLoading(false);
@@ -32,14 +32,14 @@ const PublicFeedPage = () => {
             return;
         }
         try {
-            const res = await axios.post(`/api/blogs/${id}/like`);
+            const res = await api.post(`/api/blogs/${id}/like`);
             setFeed(feed.map(b => b.id === id ? { ...b, likes: res.data } : b));
         } catch (e) { console.error(e); }
     };
 
     const loadComments = async (id) => {
         try {
-            const res = await axios.get(`/api/blogs/${id}/comments`);
+            const res = await api.get(`/api/blogs/${id}/comments`);
             setComments({ ...comments, [id]: res.data });
             setActiveCommentPost(activeCommentPost === id ? null : id);
         } catch (e) { console.error(e); }
@@ -52,7 +52,7 @@ const PublicFeedPage = () => {
         }
         if (!commentText.trim()) return;
         try {
-            const res = await axios.post(`/api/blogs/${id}/comments`, { text: commentText });
+            const res = await api.post(`/api/blogs/${id}/comments`, { text: commentText });
             const list = comments[id] || [];
             setComments({ ...comments, [id]: [res.data, ...list] });
             setCommentText('');

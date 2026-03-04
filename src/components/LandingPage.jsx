@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import {
     Layout, Zap, Shield, Globe, Code, Cpu, MessageSquare,
     ArrowRight, CheckCircle, Maximize, Edit3, Layers, Type,
@@ -26,7 +26,7 @@ const LandingPage = () => {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await axios.get('/api/public/stats');
+                const res = await api.get('/api/public/stats');
                 setStats(res.data);
             } catch (err) {
                 console.error('Failed to fetch stats');

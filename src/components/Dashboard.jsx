@@ -1,15 +1,84 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+﻿import { useState, useEffect } from 'react';
+import api from '../services/api';
+import { API_BASE_URL } from '../config';
 import {
     Plus, Edit3, Trash2, LayoutDashboard, Code2,
     ChevronRight, Check, FileText, ChevronLeft, LogOut,
     Eye, Activity, Users, Search, TrendingUp,
     Briefcase, ShieldCheck, BarChart3, Globe2, RefreshCw,
-    Settings, Globe, Heart, Monitor, Zap, User as UserIcon, MessageSquare, ThumbsUp, Send, UserCircle2
+    Settings, Globe, Heart, Monitor, Zap, User as UserIcon, MessageSquare, ThumbsUp, Send, UserCircle2,
+    PanelLeftClose, Menu, ChevronDown, BookOpen, Coins
 } from 'lucide-react';
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+    ResponsiveContainer, Legend, BarChart, Bar
+} from 'recharts';
 import Editor from './Editor';
+import UserManagement from './UserManagement';
 import { calculateGlobalSEO, analyzeSEO } from '../utils/SEOAuditor';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
+
+const SystemSettingsSection = ({ settings, onUpdate }) => {
+    const [local, setLocal] = useState(settings || { globalAnnouncement: { text: '', isActive: false, type: 'info' } });
+
+    const handleSave = async () => {
+        try {
+            const res = await api.put('/api/admin/settings', local);
+            onUpdate(res.data);
+            alert('Settings updated!');
+        } catch (e) { alert('Error updating settings'); }
+    };
+
+    return (
+        <div className="p-8 md:p-12 max-w-3xl mx-auto animate-fade-in w-full">
+            <h2 className="text-4xl font-extrabold text-textMain tracking-tight mb-8">System Control</h2>
+            <div className="glass-card-premium p-8 border border-border">
+                <div className="mb-8">
+                    <h3 className="text-lg font-bold text-textMain mb-4 flex items-center gap-2">
+                        <Globe size={20} className="text-primary" /> Global Announcement
+                    </h3>
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <input
+                                type="checkbox"
+                                id="announce-active"
+                                checked={local.globalAnnouncement?.isActive}
+                                onChange={e => setLocal({ ...local, globalAnnouncement: { ...local.globalAnnouncement, isActive: e.target.checked } })}
+                                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <label htmlFor="announce-active" className="text-sm font-bold text-textMain">Active Announcement</label>
+                        </div>
+
+                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-1">Message Text</label>
+                        <textarea
+                            value={local.globalAnnouncement?.text}
+                            onChange={e => setLocal({ ...local, globalAnnouncement: { ...local.globalAnnouncement, text: e.target.value } })}
+                            className="w-full bg-surface border border-border px-4 py-3 rounded-xl text-sm min-h-[100px] focus:ring-1 focus:ring-primary focus:outline-none transition-shadow"
+                            placeholder="Enter platform-wide message..."
+                        />
+
+                        <div className="flex gap-4">
+                            {['info', 'warning', 'error', 'success'].map(t => (
+                                <button
+                                    key={t}
+                                    onClick={() => setLocal({ ...local, globalAnnouncement: { ...local.globalAnnouncement, type: t } })}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${local.globalAnnouncement?.type === t ? 'bg-primary text-white border-primary shadow-md' : 'bg-surface border-border text-textMuted hover:border-primary'}`}
+                                >
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="pt-6 border-t border-border mt-8 flex justify-end">
+                    <button onClick={handleSave} className="bg-primary hover:bg-primaryHover text-white px-8 py-3 rounded-2xl font-black text-sm shadow-xl shadow-primary/20 hover:-translate-y-0.5 transition-all">
+                        Deploy System Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const analyticsMockData = [
     { name: 'Mon', views: 1200, readTime: 4.5 },
@@ -29,17 +98,19 @@ const trafficMockData = [
     { source: 'Referral', users: 400 },
 ];
 
-export default function Dashboard({ user, onLogout }) {
+export default function Dashboard({ user, setUser, onLogout }) {
     const [blogs, setBlogs] = useState([]);
     const [client, setClient] = useState(null);
     const [allClients, setAllClients] = useState([]); // For Admin
     const [adminMetrics, setAdminMetrics] = useState(null);
-    const [view, setView] = useState('list');
+    const [systemSettings, setSystemSettings] = useState(null);
+    const [view, setView] = useState(user?.role === 'admin' ? 'monitor' : 'list');
     const [currentBlog, setCurrentBlog] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [expandedProducts, setExpandedProducts] = useState({ blog: true });
 
     const filteredBlogs = blogs.filter(b => {
         const matchesSearch = b.title?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -50,7 +121,7 @@ export default function Dashboard({ user, onLogout }) {
     const fetchBlogs = async () => {
         try {
             setLoading(true);
-            const res = await axios.get('/api/blogs');
+            const res = await api.get('/api/blogs');
             setBlogs(res.data);
         } catch (err) {
             console.error(err);
@@ -61,7 +132,7 @@ export default function Dashboard({ user, onLogout }) {
 
     const fetchClientData = async () => {
         try {
-            const res = await axios.get('/api/clients/me');
+            const res = await api.get('/api/clients/me');
             setClient(res.data);
         } catch (err) {
             console.error('Failed to fetch client profile', err);
@@ -71,7 +142,7 @@ export default function Dashboard({ user, onLogout }) {
     const fetchAdminMetrics = async () => {
         if (user.role !== 'admin') return;
         try {
-            const res = await axios.get('/api/admin/metrics');
+            const res = await api.get('/api/admin/metrics');
             setAdminMetrics(res.data);
         } catch (err) {
             console.error('Failed to fetch admin metrics', err);
@@ -81,26 +152,52 @@ export default function Dashboard({ user, onLogout }) {
     const fetchAllClients = async () => {
         if (user.role !== 'admin') return;
         try {
-            const res = await axios.get('/api/admin/clients');
+            const res = await api.get('/api/admin/clients');
             setAllClients(res.data);
         } catch (err) {
             console.error('Failed to fetch clients', err);
         }
     };
 
+    const fetchCurrentUser = async () => {
+        try {
+            const res = await api.get('/api/auth/me');
+            const updatedUser = res.data;
+            const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+            // Merge updated user data while preserving the existing token
+            const mergedUser = { ...updatedUser, token: savedUser.token };
+
+            setUser(mergedUser);
+            localStorage.setItem('user', JSON.stringify(mergedUser));
+        } catch (err) {
+            console.error('Failed to refresh user data', err);
+        }
+    };
+
     useEffect(() => {
-        fetchBlogs();
-        fetchClientData();
+        fetchCurrentUser();
+        fetchSystemSettings();
         if (user.role === 'admin') {
             fetchAdminMetrics();
             fetchAllClients();
+        } else {
+            fetchBlogs();
+            fetchClientData();
         }
     }, []);
+
+    const fetchSystemSettings = async () => {
+        try {
+            const res = await api.get('/api/public/settings');
+            setSystemSettings(res.data);
+        } catch (e) { console.error('Failed to fetch platform settings', e); }
+    };
 
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to delete this blog?')) return;
         try {
-            await axios.delete(`/api/blogs/${id}`);
+            await api.delete(`/api/blogs/${id}`);
             fetchBlogs();
         } catch (err) {
             console.error(err);
@@ -111,9 +208,9 @@ export default function Dashboard({ user, onLogout }) {
         try {
             if (currentBlog?.id || currentBlog?._id) {
                 const id = currentBlog.id || currentBlog._id;
-                await axios.put(`/api/blogs/${id}`, blogData);
+                await api.put(`/api/blogs/${id}`, blogData);
             } else {
-                await axios.post('/api/blogs', blogData);
+                await api.post('/api/blogs', blogData);
             }
             setView('list');
             fetchBlogs();
@@ -125,7 +222,7 @@ export default function Dashboard({ user, onLogout }) {
     const regenerateApiKey = async () => {
         if (!window.confirm('Warning: This will break existing embeds until you update them with the new key. Proceed?')) return;
         try {
-            const res = await axios.post('/api/clients/regenerate-key');
+            const res = await api.post('/api/clients/regenerate-key');
             setClient(res.data);
             alert('New API Key generated successfully!');
         } catch (err) {
@@ -135,337 +232,345 @@ export default function Dashboard({ user, onLogout }) {
     };
 
     return (
-        <div className="w-full h-screen bg-background flex overflow-hidden relative selection:bg-primary/20">
-            {/* Mesh Gradient Background */}
-            <div className="absolute inset-0 pointer-events-none opacity-40">
-                <div className="mesh-gradient absolute inset-0"></div>
-            </div>
+        <div className="w-full h-screen flex overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #F8FAFF 0%, #EEF2FF 50%, #F5F3FF 100%)' }}>
 
             {/* Sidebar */}
-            <aside className={`${isSidebarOpen ? 'w-72' : 'w-20'} bg-white border-r border-gray-100 hidden md:flex flex-col z-20 shrink-0 transition-all duration-300 relative shadow-sm h-full`}>
-                <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 custom-scrollbar pb-6 relative z-10">
+            <aside className={`${isSidebarOpen ? 'w-[250px]' : 'w-[68px]'} bg-white border-r border-gray-200/80 hidden md:flex flex-col z-20 shrink-0 transition-all duration-300 ease-in-out relative h-full shadow-sm`}>
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-5 relative z-10" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    <style>{`.sidebar-scroll::-webkit-scrollbar { display: none; }`}</style>
 
-                    {/* App Logo */}
-                    <div className={`flex items-center gap-3 mb-12 mt-2 ${!isSidebarOpen && 'justify-center'}`}>
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primaryHover text-white flex items-center justify-center font-black text-xl shrink-0 shadow-lg shadow-primary/20">P</div>
-                        {isSidebarOpen && <span className="text-2xl font-black tracking-tight text-gray-900">PublishPro</span>}
+                    {/* App Logo + Toggle */}
+                    <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'} mb-6 px-2`}>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-bold text-base shrink-0 shadow-md shadow-indigo-500/20">C</div>
+                            {isSidebarOpen && <span className="text-lg font-bold tracking-tight text-gray-800">CMS<span className="text-indigo-500">Pro</span></span>}
+                        </div>
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                        >
+                            {isSidebarOpen ? <PanelLeftClose size={18} /> : <Menu size={18} />}
+                        </button>
                     </div>
-
-                    {/* Toggle Button */}
-                    <button
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="absolute -right-4 top-10 bg-white border border-gray-200 rounded-full p-1.5 text-gray-400 hover:text-gray-900 hover:shadow-md transition-all z-50 shadow-sm flex items-center justify-center h-8 w-8 hover:scale-105"
-                    >
-                        {isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-                    </button>
 
                     {/* Platform Management (Admin ONLY) */}
                     {user.role === 'admin' && (
-                        <div className="mb-10">
-                            <h3 className={`text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 ${isSidebarOpen ? 'ml-4' : 'text-center'}`}>
-                                {isSidebarOpen ? 'Platform' : 'ADM'}
-                            </h3>
-                            <nav className="flex flex-col gap-1 w-full">
-                                <button
-                                    onClick={() => setView('monitor')}
-                                    className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'monitor' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                                >
-                                    <Activity size={20} className="shrink-0" />
+                        <div className="mb-5">
+                            {isSidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-3">Admin</p>}
+                            <nav className="flex flex-col gap-0.5 w-full">
+                                <button onClick={() => setView('monitor')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'monitor' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <Activity size={18} className="shrink-0" />
                                     {isSidebarOpen && <span>Health Monitor</span>}
                                 </button>
-                                <button
-                                    onClick={() => setView('clients')}
-                                    className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'clients' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                                >
-                                    <Users size={20} className="shrink-0" />
-                                    {isSidebarOpen && <span>Client Registry</span>}
+                                <button onClick={() => setView('clients')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'clients' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <Users size={18} className="shrink-0" />
+                                    {isSidebarOpen && <span>User Management</span>}
+                                </button>
+                                <button onClick={() => setView('system-settings')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'system-settings' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <ShieldCheck size={18} className="shrink-0" />
+                                    {isSidebarOpen && <span>Platform Control</span>}
                                 </button>
                             </nav>
                         </div>
                     )}
 
-                    {/* Content Hub (Everyone) */}
-                    <div className="mb-10">
-                        <h3 className={`text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 ${isSidebarOpen ? 'ml-4' : 'text-center'}`}>
-                            {isSidebarOpen ? 'Content Hub' : 'HUB'}
-                        </h3>
-                        <nav className="flex flex-col gap-1">
-                            <button
-                                onClick={() => setView('list')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'list' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <FileText size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>All Posts</span>}
-                            </button>
-                            <button
-                                onClick={() => { setCurrentBlog(null); setView('edit'); }}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'edit' && !currentBlog ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Edit3 size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>New Post</span>}
-                            </button>
-                            <button
-                                onClick={() => setView('embed')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'embed' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Code2 size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>Distribution</span>}
-                            </button>
-                            <button
-                                onClick={() => { setCurrentBlog(null); setView('feed'); }}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'feed' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Globe size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>Platform Feed</span>}
-                            </button>
-                        </nav>
-
-                        <div className="mt-10">
-                            <h3 className={`text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 ${isSidebarOpen ? 'ml-4' : 'text-center'}`}>
-                                {isSidebarOpen ? 'Growth Center' : 'GRO'}
-                            </h3>
-                            <nav className="flex flex-col gap-1">
+                    {/* Products */}
+                    {user.role !== 'admin' && (
+                        <div className="mb-5">
+                            {isSidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-3">Products</p>}
+                            <nav className="flex flex-col gap-0.5">
+                                {/* Blog Product */}
                                 <button
-                                    onClick={() => window.open('/preview', '_blank')}
-                                    className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} text-gray-500 hover:bg-gray-50 hover:text-gray-900`}
+                                    onClick={() => {
+                                        if (isSidebarOpen) {
+                                            setExpandedProducts(p => ({ ...p, blog: !p.blog }));
+                                        } else {
+                                            setView('list');
+                                        }
+                                    }}
+                                    className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${(view === 'list' || (view === 'edit')) ? 'text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}
                                 >
-                                    <Eye size={20} className="shrink-0" />
+                                    <BookOpen size={18} className="shrink-0" />
+                                    {isSidebarOpen && (
+                                        <>
+                                            <span className="flex-1">Blog</span>
+                                            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${expandedProducts.blog ? 'rotate-180' : ''}`} />
+                                        </>
+                                    )}
+                                </button>
+                                {/* Blog Sub-items */}
+                                {isSidebarOpen && expandedProducts.blog && (
+                                    <div className="ml-5 pl-3 border-l-2 border-gray-100 flex flex-col gap-0.5 mt-0.5">
+                                        <button onClick={() => setView('list')} className={`flex items-center gap-3 w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all duration-150 ${view === 'list' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                            <FileText size={15} className="shrink-0" />
+                                            <span>All Posts</span>
+                                        </button>
+                                        <button onClick={() => { setCurrentBlog(null); setView('edit'); }} className={`flex items-center gap-3 w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all duration-150 ${view === 'edit' && !currentBlog ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                            <Plus size={15} className="shrink-0" />
+                                            <span>Create Blog</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </nav>
+                        </div>
+                    )}
+
+                    {/* Growth */}
+                    {user.role !== 'admin' && (
+                        <div className="mb-5">
+                            {isSidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-3">Growth</p>}
+                            <nav className="flex flex-col gap-0.5">
+                                <button onClick={() => setView('embed')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'embed' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <Code2 size={18} className="shrink-0" />
+                                    {isSidebarOpen && <span>Distribution</span>}
+                                </button>
+                                <button onClick={() => setView('analytics')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'analytics' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <BarChart3 size={18} className="shrink-0" />
+                                    {isSidebarOpen && <span>Analytics</span>}
+                                </button>
+                                <button onClick={() => window.open('/preview', '_blank')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} text-gray-500 hover:bg-gray-50 hover:text-gray-700`}>
+                                    <Eye size={18} className="shrink-0" />
                                     {isSidebarOpen && <span>Live Preview</span>}
                                 </button>
-                                <button
-                                    onClick={() => setView('analytics')}
-                                    className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'analytics' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                                >
-                                    <BarChart3 size={20} className="shrink-0" />
-                                    {isSidebarOpen && <span>Advanced Analytics</span>}
+                                <button onClick={() => { setCurrentBlog(null); setView('feed'); }} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'feed' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                    <Globe size={18} className="shrink-0" />
+                                    {isSidebarOpen && <span>Platform Feed</span>}
                                 </button>
                             </nav>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Settings & Identity */}
-                    <div>
-                        <h3 className={`text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 ${isSidebarOpen ? 'ml-4' : 'text-center'}`}>
-                            {isSidebarOpen ? 'Identity' : 'ID'}
-                        </h3>
-                        <nav className="flex flex-col gap-1">
-                            <button
-                                onClick={() => setView('branding')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'branding' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Zap size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>Brand Settings</span>}
-                            </button>
-                            <button
-                                onClick={() => setView('business')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'business' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Briefcase size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>Growth Suite</span>}
-                            </button>
-                            <button
-                                onClick={() => setView('account')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'account' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <Settings size={20} className="shrink-0" />
+                    {/* Settings */}
+                    <div className="mb-5">
+                        {isSidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-3">Settings</p>}
+                        <nav className="flex flex-col gap-0.5">
+                            {user.role !== 'admin' && (
+                                <>
+                                    <button onClick={() => setView('branding')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'branding' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                        <Zap size={18} className="shrink-0" />
+                                        {isSidebarOpen && <span>Brand</span>}
+                                    </button>
+                                    <button onClick={() => setView('business')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'business' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                        <Briefcase size={18} className="shrink-0" />
+                                        {isSidebarOpen && <span>Growth Suite</span>}
+                                    </button>
+                                </>
+                            )}
+                            <button onClick={() => setView('account')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'account' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                <Settings size={18} className="shrink-0" />
                                 {isSidebarOpen && <span>Account</span>}
                             </button>
-                            <button
-                                onClick={() => setView('profile')}
-                                className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-2xl text-sm transition-all font-semibold ${!isSidebarOpen && 'justify-center px-0'} ${view === 'profile' ? 'bg-gray-900 text-white shadow-md shadow-gray-900/10' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
-                            >
-                                <UserIcon size={20} className="shrink-0" />
-                                {isSidebarOpen && <span>Creator Profile</span>}
+                            <button onClick={() => setView('profile')} className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${!isSidebarOpen && 'justify-center px-2'} ${view === 'profile' ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                                <UserIcon size={18} className="shrink-0" />
+                                {isSidebarOpen && <span>Profile</span>}
                             </button>
                         </nav>
                     </div>
                 </div>
 
-                {/* Fixed Profile Section at bottom of sidebar */}
-                <div className="mt-auto p-4 border-t border-gray-100 bg-gray-50/50 shrink-0 z-30">
-                    <div className={`flex ${isSidebarOpen ? 'flex-col items-start gap-3' : 'flex-col items-center gap-3'} w-full`}>
-                        <div className="flex items-center gap-3 overflow-hidden w-full bg-white p-2 rounded-2xl border border-gray-200/50 shadow-sm">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-inner">
+                {/* Credits Card */}
+                {isSidebarOpen && user?.role !== 'admin' && (
+                    <div className="mx-3 mb-2 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100/50">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Coins size={14} className="text-indigo-500" />
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Credits</span>
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{user?.credits ?? 0}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">1 credit = 1 post • AI uses 10</p>
+                    </div>
+                )}
+                {!isSidebarOpen && user?.role !== 'admin' && (
+                    <div className="mx-auto mb-2 w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center" title={`Credits: ${user?.credits ?? 0}`}>
+                        <span className="text-xs font-bold text-indigo-600">{user?.credits ?? 0}</span>
+                    </div>
+                )}
+
+                {/* Profile Section */}
+                <div className="mt-auto px-3 py-3 border-t border-gray-100 shrink-0 z-30">
+                    <div className={`flex ${isSidebarOpen ? 'flex-col gap-1.5' : 'flex-col items-center gap-1.5'} w-full`}>
+                        <div className={`flex items-center gap-3 overflow-hidden w-full p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer ${!isSidebarOpen && 'justify-center p-2'}`} onClick={() => setView('profile')}>
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center font-semibold text-xs shrink-0 shadow-sm">
                                 {user?.username?.charAt(0).toUpperCase() || 'U'}
                             </div>
                             {isSidebarOpen && (
                                 <div className="flex flex-col truncate pr-2">
-                                    <span className="text-sm font-bold text-gray-900 truncate">{user?.username || 'User'}</span>
-                                    <span className="text-[10px] text-gray-500 font-semibold truncate">{user?.email || 'user@example.com'}</span>
+                                    <span className="text-sm font-medium text-gray-800 truncate">{user?.username || 'User'}</span>
+                                    <span className="text-[10px] text-gray-400 truncate">{user?.email || 'user@example.com'}</span>
                                 </div>
                             )}
                         </div>
                         <button
                             onClick={onLogout}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-gray-500 font-semibold hover:text-red-600 hover:bg-red-50 transition-colors ${!isSidebarOpen && 'w-full justify-center px-0'} ${isSidebarOpen && 'w-full'}`}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 font-medium text-[12px] hover:text-rose-500 hover:bg-rose-50 transition-all ${!isSidebarOpen && 'w-full justify-center px-0'} ${isSidebarOpen && 'w-full'}`}
                             title="Logout"
                         >
-                            <LogOut size={18} />
-                            {isSidebarOpen && <span className="text-sm">Log out securely</span>}
+                            <LogOut size={14} />
+                            {isSidebarOpen && <span>Sign out</span>}
                         </button>
                     </div>
                 </div>
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 min-h-screen overflow-y-auto bg-[#FAFAFA] relative flex flex-col">
+            <main className="flex-1 min-h-screen overflow-y-auto relative flex flex-col">
+                {/* Global Announcement Banner */}
+                {systemSettings?.globalAnnouncement?.isActive && (
+                    <div className={`px-6 py-2.5 flex items-center justify-center gap-3 text-white text-xs font-black uppercase tracking-widest z-30 sticky top-0 ${systemSettings.globalAnnouncement.type === 'warning' ? 'bg-amber-500' :
+                        systemSettings.globalAnnouncement.type === 'error' ? 'bg-rose-500' :
+                            systemSettings.globalAnnouncement.type === 'success' ? 'bg-emerald-500' : 'bg-primary'
+                        }`}>
+                        <Globe size={14} className="animate-pulse" />
+                        <span>{systemSettings.globalAnnouncement.text}</span>
+                    </div>
+                )}
+
+                {/* Incomplete Profile Banner */}
+                {!user?.isProfileComplete && user?.role !== 'admin' && (
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200/50 px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 z-20 relative sticky top-0">
+                        <div className="flex items-center gap-3 text-amber-700">
+                            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center"><UserCircle2 size={18} /></div>
+                            <div>
+                                <p className="font-semibold text-sm">Complete your profile</p>
+                                <p className="text-xs text-amber-600/80">Fill out your bio and display name to unlock all features.</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setView('profile')} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-all shadow-sm whitespace-nowrap">
+                            Complete Now
+                        </button>
+                    </div>
+                )}
+
                 {/* List View */}
                 {view === 'list' && (
-                    <div className="p-8 md:p-12 mb-20 max-w-7xl mx-auto animate-fade-in w-full">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+                    <div className="p-6 md:p-10 mb-20 max-w-7xl mx-auto animate-fade-in w-full">
+                        {/* Header */}
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 mb-10">
                             <div>
-                                <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-gray-700 to-gray-500 mb-2">
-                                    Welcome back, {user?.username?.split(' ')[0] || 'Creator'}
+                                <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-1">
+                                    Welcome back, {user?.username?.split(' ')[0] || 'Creator'} 👋
                                 </h1>
-                                <p className="text-textMuted text-base font-medium">Here's what's happening with your content today.</p>
+                                <p className="text-gray-500 text-sm">Here's an overview of your content performance.</p>
                             </div>
-                            <div className="flex w-full md:w-auto items-center gap-4">
-                                <div className="relative w-full md:w-72">
-                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <div className="flex w-full md:w-auto items-center gap-3">
+                                <div className="relative w-full md:w-64">
+                                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                                     <input
                                         type="text"
                                         placeholder="Search articles..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full bg-white border border-gray-200/60 pl-11 pr-4 py-3 rounded-2xl text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-sm transition-all"
+                                        className="w-full bg-white border border-gray-200 pl-10 pr-4 py-2.5 rounded-xl text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
                                     />
                                 </div>
                                 <button
                                     onClick={() => { setCurrentBlog(null); setView('edit'); }}
-                                    className="bg-primary hover:bg-primaryHover text-white px-6 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-primary/25 hover:-translate-y-0.5 transition-all whitespace-nowrap"
+                                    className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/25 hover:-translate-y-0.5 transition-all whitespace-nowrap"
                                 >
-                                    <Plus size={18} />
+                                    <Plus size={16} />
                                     New Post
                                 </button>
                             </div>
                         </div>
 
                         {/* Metric Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col items-start gap-4 group">
-                                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <FileText size={22} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+                            <div className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-lg transition-all duration-300 flex items-center gap-4 group">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-blue-500/20">
+                                    <FileText size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-semibold mb-1">Total Articles</p>
-                                    <p className="text-3xl font-black text-gray-900">{blogs.length}</p>
+                                    <p className="text-xs text-gray-400 font-medium mb-0.5">Total Articles</p>
+                                    <p className="text-2xl font-bold text-gray-900">{blogs.length}</p>
                                 </div>
                             </div>
-
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col items-start gap-4 group relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-[100px] -z-10"></div>
-                                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <Check size={22} />
+                            <div className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-lg transition-all duration-300 flex items-center gap-4 group">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-emerald-500/20">
+                                    <Check size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-semibold mb-1">Published</p>
-                                    <p className="text-3xl font-black text-gray-900">{blogs.filter(b => b.status === 'published').length}</p>
+                                    <p className="text-xs text-gray-400 font-medium mb-0.5">Published</p>
+                                    <p className="text-2xl font-bold text-gray-900">{blogs.filter(b => b.status === 'published').length}</p>
                                 </div>
                             </div>
-
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col items-start gap-4 group relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-[100px] -z-10"></div>
-                                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <Edit3 size={22} />
+                            <div className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-lg transition-all duration-300 flex items-center gap-4 group">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-amber-500/20">
+                                    <Edit3 size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-semibold mb-1">Drafts</p>
-                                    <p className="text-3xl font-black text-gray-900">{blogs.filter(b => b.status === 'draft' || !b.status).length}</p>
+                                    <p className="text-xs text-gray-400 font-medium mb-0.5">Drafts</p>
+                                    <p className="text-2xl font-bold text-gray-900">{blogs.filter(b => b.status === 'draft' || !b.status).length}</p>
                                 </div>
                             </div>
-
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col items-start gap-4 group relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-bl-[100px] -z-10"></div>
-                                <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                    <TrendingUp size={22} />
+                            <div className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-lg transition-all duration-300 flex items-center gap-4 group">
+                                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-violet-500/20">
+                                    <Coins size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 font-semibold mb-1">Total Views</p>
-                                    <p className="text-3xl font-black text-gray-900">{(blogs.length * 240).toLocaleString()}</p>
+                                    <p className="text-xs text-gray-400 font-medium mb-0.5">Credits</p>
+                                    <p className="text-2xl font-bold text-gray-900">{user?.credits ?? 0}</p>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3 mb-8 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm w-fit">
-                            <button
-                                onClick={() => setStatusFilter('all')}
-                                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === 'all' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
-                            >All Posts</button>
-                            <button
-                                onClick={() => setStatusFilter('published')}
-                                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === 'published' ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
-                            >Live</button>
-                            <button
-                                onClick={() => setStatusFilter('draft')}
-                                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === 'draft' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
-                            >Drafts</button>
+                        {/* Filter Tabs */}
+                        <div className="flex items-center gap-2 mb-8 bg-white/60 backdrop-blur-sm p-1 rounded-xl border border-gray-200/50 shadow-sm w-fit">
+                            <button onClick={() => setStatusFilter('all')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === 'all' ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>All</button>
+                            <button onClick={() => setStatusFilter('published')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === 'published' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>Live</button>
+                            <button onClick={() => setStatusFilter('draft')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === 'draft' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>Drafts</button>
                         </div>
+
 
                         {blogs.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-32 px-6 border-2 border-dashed border-gray-200 rounded-[2rem] bg-white/50 relative overflow-hidden">
-                                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50/50 pointer-events-none"></div>
-                                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 shadow-sm border border-gray-100">
-                                    <FileText size={32} className="text-gray-300" />
+                            <div className="flex flex-col items-center justify-center py-24 px-6 border-2 border-dashed border-gray-200 rounded-2xl bg-white/40 backdrop-blur-sm relative overflow-hidden">
+                                <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-5 shadow-sm border border-indigo-100/50">
+                                    <FileText size={28} className="text-indigo-300" />
                                 </div>
-                                <h3 className="text-2xl font-bold text-gray-900 mb-2 relative z-10">No publications yet</h3>
-                                <p className="text-gray-500 text-center text-base mb-8 max-w-sm relative z-10">Your writing journey begins here. Create your first cinematic post.</p>
-                                <button onClick={() => { setCurrentBlog(null); setView('edit'); }} className="bg-primary hover:bg-primaryHover text-white px-8 py-3.5 rounded-2xl font-bold text-base flex items-center gap-2 shadow-lg shadow-primary/25 hover:-translate-y-0.5 transition-all relative z-10">
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">No publications yet</h3>
+                                <p className="text-gray-500 text-center text-sm mb-6 max-w-sm">Your writing journey begins here. Create your first post.</p>
+                                <button onClick={() => { setCurrentBlog(null); setView('edit'); }} className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/25 hover:-translate-y-0.5 transition-all">
+                                    <Plus size={16} />
                                     Start Writing
                                 </button>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                 {filteredBlogs.map(blog => (
-                                    <div key={blog.id || blog._id} className="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col overflow-hidden group">
-                                        <div className="h-48 bg-gray-50 flex items-center justify-center relative overflow-hidden border-b border-gray-100">
+                                    <div key={blog.id || blog._id} className="bg-white/70 backdrop-blur-sm rounded-2xl border border-white/80 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-lg transition-all duration-300 flex flex-col overflow-hidden group">
+                                        <div className="h-44 bg-gradient-to-br from-indigo-50 to-violet-50 flex items-center justify-center relative overflow-hidden">
                                             {blog.coverImage ? (
                                                 <img src={blog.coverImage} className="object-cover w-full h-full transform group-hover:scale-105 transition-transform duration-500" alt="Cover" />
                                             ) : (
-                                                <div className="absolute inset-0 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-                                                    <FileText size={48} className="text-gray-200" />
+                                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/80 to-violet-50/80 flex items-center justify-center">
+                                                    <FileText size={40} className="text-indigo-200" />
                                                 </div>
                                             )}
-
-                                            {/* Absolute positioned status pill on the image */}
-                                            <div className="absolute top-4 left-4 z-10">
-                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-sm ${blog.status === 'published' ? 'bg-emerald-500/90 text-white border-emerald-400' : 'bg-amber-500/90 text-white border-amber-400'}`}>
+                                            <div className="absolute top-3 left-3 z-10">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider backdrop-blur-md shadow-sm ${blog.status === 'published' ? 'bg-emerald-500/90 text-white' : 'bg-amber-500/90 text-white'}`}>
                                                     {blog.status === 'published' && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>}
                                                     {blog.status || 'draft'}
                                                 </span>
                                             </div>
                                         </div>
-
-                                        <div className="p-6 flex flex-col flex-1">
-                                            <h3 className="font-bold text-gray-900 text-lg leading-tight line-clamp-2 mb-4 group-hover:text-primary transition-colors">{blog.title}</h3>
-
-                                            <div className="flex items-center text-xs text-gray-400 font-semibold mb-6">
+                                        <div className="p-5 flex flex-col flex-1">
+                                            <h3 className="font-semibold text-gray-900 text-base leading-snug line-clamp-2 mb-3 group-hover:text-indigo-600 transition-colors">{blog.title}</h3>
+                                            <div className="flex items-center text-xs text-gray-400 font-medium mb-4">
                                                 <span>{new Date(blog.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                             </div>
-
-                                            <div className="mt-auto flex items-center justify-between border-t border-gray-50 pt-4">
-                                                <div className="flex flex-col gap-1.5 cursor-help" title="SEO Health Score">
-                                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">SEO Health</span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className={`w-6 h-1 rounded-full ${blog.metaDescription ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
-                                                        <div className={`w-6 h-1 rounded-full ${blog.metaDescription ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
-                                                        <div className={`w-6 h-1 rounded-full ${blog.title && blog.title.length > 10 ? 'bg-emerald-500' : 'bg-gray-200'}`}></div>
+                                            <div className="mt-auto flex items-center justify-between border-t border-gray-100 pt-3">
+                                                <div className="flex flex-col gap-1 cursor-help" title="SEO Health Score">
+                                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">SEO</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <div className={`w-5 h-1 rounded-full ${blog.metaDescription ? 'bg-emerald-400' : 'bg-gray-200'}`}></div>
+                                                        <div className={`w-5 h-1 rounded-full ${blog.metaDescription ? 'bg-emerald-400' : 'bg-gray-200'}`}></div>
+                                                        <div className={`w-5 h-1 rounded-full ${blog.title && blog.title.length > 10 ? 'bg-emerald-400' : 'bg-gray-200'}`}></div>
                                                     </div>
                                                 </div>
-
-                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                                                    <button
-                                                        onClick={() => { setCurrentBlog(blog); setView('edit'); }}
-                                                        className="h-9 w-9 flex items-center justify-center bg-gray-50 hover:bg-primary/10 rounded-xl text-gray-500 hover:text-primary transition-colors"
-                                                        title="Edit Post"
-                                                    >
-                                                        <Edit3 size={16} />
+                                                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0">
+                                                    <button onClick={() => { setCurrentBlog(blog); setView('edit'); }} className="h-8 w-8 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-500 transition-colors" title="Edit">
+                                                        <Edit3 size={14} />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleDelete(blog.id || blog._id)}
-                                                        className="h-9 w-9 flex items-center justify-center bg-gray-50 hover:bg-red-50 rounded-xl text-gray-500 hover:text-red-500 transition-colors"
-                                                        title="Delete Post"
-                                                    >
-                                                        <Trash2 size={16} />
+                                                    <button onClick={() => handleDelete(blog.id || blog._id)} className="h-8 w-8 flex items-center justify-center bg-rose-50 hover:bg-rose-100 rounded-lg text-rose-500 transition-colors" title="Delete">
+                                                        <Trash2 size={14} />
                                                     </button>
                                                 </div>
                                             </div>
@@ -619,10 +724,7 @@ export default function Dashboard({ user, onLogout }) {
 
                 {/* Clients Registry (Admin ONLY) */}
                 {view === 'clients' && user.role === 'admin' && (
-                    <AdminClientsSection
-                        clients={allClients}
-                        onRefresh={fetchAllClients}
-                    />
+                    <UserManagement />
                 )}
 
                 {/* Branding Suite (User Settings) */}
@@ -638,25 +740,32 @@ export default function Dashboard({ user, onLogout }) {
                 )}
 
                 {view === 'profile' && (
-                    <ProfileSection />
+                    <ProfileSection onProfileSaved={fetchCurrentUser} />
                 )}
 
                 {view === 'feed' && (
                     <FeedSection />
+                )}
+
+                {view === 'system-settings' && user.role === 'admin' && (
+                    <SystemSettingsSection
+                        settings={systemSettings}
+                        onUpdate={(updated) => setSystemSettings(updated)}
+                    />
                 )}
             </main>
         </div>
     );
 }
 
-function ProfileSection() {
+function ProfileSection({ onProfileSaved }) {
     const [profile, setProfile] = useState({ name: '', bio: '', profilePicUrl: '' });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const res = await axios.get('/api/users/profile/me');
+                const res = await api.get('/api/users/profile/me');
                 setProfile({ name: res.data.name || '', bio: res.data.bio || '', profilePicUrl: res.data.profilePicUrl || '' });
             } catch (e) { console.error(e); }
             setLoading(false);
@@ -666,8 +775,9 @@ function ProfileSection() {
 
     const handleSave = async () => {
         try {
-            await axios.put('/api/users/profile', profile);
+            await api.put('/api/users/profile', profile);
             alert('Profile saved!');
+            if (onProfileSaved) onProfileSaved();
         } catch (e) { alert('Error saving profile'); }
     };
 
@@ -713,7 +823,7 @@ function FeedSection() {
 
     const fetchFeed = async () => {
         try {
-            const res = await axios.get('/api/feed');
+            const res = await api.get('/api/feed');
             setFeed(res.data);
         } catch (e) { console.error(e); }
         setLoading(false);
@@ -723,14 +833,14 @@ function FeedSection() {
 
     const toggleLike = async (id) => {
         try {
-            const res = await axios.post(`/api/blogs/${id}/like`);
+            const res = await api.post(`/api/blogs/${id}/like`);
             setFeed(feed.map(b => b.id === id ? { ...b, likes: res.data } : b));
         } catch (e) { console.error(e); }
     };
 
     const loadComments = async (id) => {
         try {
-            const res = await axios.get(`/api/blogs/${id}/comments`);
+            const res = await api.get(`/api/blogs/${id}/comments`);
             setComments({ ...comments, [id]: res.data });
             setActiveCommentPost(activeCommentPost === id ? null : id);
         } catch (e) { console.error(e); }
@@ -739,7 +849,7 @@ function FeedSection() {
     const submitComment = async (id) => {
         if (!commentText.trim()) return;
         try {
-            const res = await axios.post(`/api/blogs/${id}/comments`, { text: commentText });
+            const res = await api.post(`/api/blogs/${id}/comments`, { text: commentText });
             const list = comments[id] || [];
             setComments({ ...comments, [id]: [res.data, ...list] });
             setCommentText('');
@@ -834,135 +944,193 @@ function EmbedSection({ blogs, client }) {
     const [selectedBlogId, setSelectedBlogId] = useState('all');
     const [theme, setTheme] = useState('light');
     const [embedMode, setEmbedMode] = useState('static');
+    const [showDate, setShowDate] = useState(true);
+    const [showAuthor, setShowAuthor] = useState(true);
+    const [showSummary, setShowSummary] = useState(true);
+    const [lang, setLang] = useState('en');
 
     const generateSnippet = () => {
-        const themeAttr = theme !== 'light' ? ` data-theme="${theme}"` : '';
-        const selectedTarget = selectedBlogId === 'all' ? '' : ` data-blog-id="${selectedBlogId}"`;
-        const serverUrl = window.location.origin;
-        const scriptUrl = `${serverUrl}/api/embed.js?key=${client?.apiKey || 'YOUR_API_KEY'}`;
+        const params = [];
+        if (theme !== 'light') params.push(`data-theme="${theme}"`);
+        if (selectedBlogId !== 'all') params.push(`data-blog-id="${selectedBlogId}"`);
+        if (!showDate) params.push(`data-hide-date="true"`);
+        if (!showAuthor) params.push(`data-hide-author="true"`);
+        if (!showSummary) params.push(`data-hide-summary="true"`);
+        if (lang !== 'en') params.push(`data-lang="${lang}"`);
+
+        const scriptUrl = `${API_BASE_URL}/api/embed.js?key=${client?.apiKey || 'YOUR_API_KEY'}`;
 
         if (embedMode === 'static') {
-            return `<!-- LexiBlog Embed -->\n<div id="blog-embed-container" ${selectedTarget} ${themeAttr}></div>\n<script src="${scriptUrl}"></script>`;
+            return `<!-- LexiBlog Embed -->\n<div id="blog-embed-container" ${params.join(' ')}></div>\n<script src="${scriptUrl}"></script>`;
         } else {
-            return `// Fetch API Payload\nfetch("${serverUrl}/api/public/blogs${selectedBlogId !== 'all' ? `/${selectedBlogId}` : ''}", {\n  headers: {"x-api-key": "${client?.apiKey || 'YOUR_API_KEY'}" }\n})\n.then(res => res.json())\n.then(data => console.log(data));`;
+            return `// Fetch API Payload\nfetch("${API_BASE_URL}/api/public/blogs${selectedBlogId !== 'all' ? `/${selectedBlogId}` : ''}", {\n  headers: {"x-api-key": "${client?.apiKey || 'YOUR_API_KEY'}" }\n})\n.then(res => res.json())\n.then(data => console.log(data));`;
         }
     };
 
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(generateSnippet());
+        alert('Code copied to clipboard!');
+    };
+
     return (
-        <div className="p-8 md:p-12 max-w-5xl mx-auto animate-fade-in">
-            <h2 className="text-4xl font-extrabold text-textMain tracking-tight mb-8">Embed Widget</h2>
-            <div className="glass-card-premium p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div>
-                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Select Target</label>
-                        <select
-                            value={selectedBlogId}
-                            onChange={(e) => setSelectedBlogId(e.target.value)}
-                            className="w-full bg-surface border border-border px-4 py-3 rounded-xl text-sm"
-                        >
-                            <option value="all">Full News Feed</option>
-                            {blogs.map(b => (
-                                <option key={b.id || b._id} value={b.id || b._id}>
-                                    {b.title}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Visual Theme</label>
-                        <select
-                            value={theme}
-                            onChange={(e) => setTheme(e.target.value)}
-                            className="w-full bg-surface border border-border px-4 py-3 rounded-xl text-sm capitalize"
-                        >
-                            <option value="light">Classic Light</option>
-                            <option value="dark">Pro Dark</option>
-                            <option value="ocean">Ocean Pulse</option>
-                            <option value="midnight">Midnight Express</option>
-                            <option value="cyberpunk">Cybernetic</option>
-                            <option value="notion">Minimalist (Notion)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Integration</label>
-                        <div className="flex bg-surfaceHover p-1 rounded-xl border border-border">
-                            <button
-                                onClick={() => setEmbedMode('static')}
-                                className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${embedMode === 'static' ? 'bg-white text-primary shadow-sm' : 'text-textMuted hover:text-textMain'}`}
-                            >
-                                HTML
-                            </button>
-                            <button
-                                onClick={() => setEmbedMode('dynamic')}
-                                className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${embedMode === 'dynamic' ? 'bg-white text-primary shadow-sm' : 'text-textMuted hover:text-textMain'}`}
-                            >
-                                API
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        <div className="p-6 md:p-10 mb-20 max-w-7xl mx-auto animate-fade-in w-full">
+            <div className="mb-8">
+                <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Distribution & Embeds</h2>
+                <p className="text-gray-500 text-sm mt-1">Integrate your content anywhere using our powerful embed engine.</p>
+            </div>
 
-                <div className="mb-8">
-                    <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Your Embed Code</label>
-                    <pre className="p-4 bg-gray-950 text-emerald-400 rounded-xl text-xs overflow-x-auto border border-gray-800 font-mono leading-relaxed">
-                        {generateSnippet()}
-                    </pre>
-                </div>
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                {/* Configuration Panel */}
+                <div className="xl:col-span-5 space-y-6">
+                    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                        <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            Widget Configuration
+                        </h3>
 
-                <div className="pt-6 border-t border-border">
-                    <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-4">Live Preview</label>
-                    <div className="p-6 rounded-2xl border border-gray-100 bg-gray-50/50 shadow-inner relative overflow-hidden min-h-[300px]">
-                        <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-                            <span className="px-3 py-1 bg-white/80 backdrop-blur-md rounded-full text-[10px] font-black uppercase text-gray-500 border border-gray-200 shadow-sm flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${embedMode === 'static' ? 'bg-emerald-500' : 'bg-blue-500'} animate-pulse`}></span>
-                                {embedMode} | Theme: {theme}
-                            </span>
-                        </div>
+                        <div className="space-y-5">
+                            <div>
+                                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-2">Content Source</label>
+                                <select
+                                    value={selectedBlogId}
+                                    onChange={(e) => setSelectedBlogId(e.target.value)}
+                                    className="w-full bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                    <option value="all">Complete News Feed (Recommended)</option>
+                                    <optgroup label="Single Articles">
+                                        {blogs.map(b => (
+                                            <option key={b.id || b._id} value={b.id || b._id}>{b.title}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                            </div>
 
-                        {embedMode === 'static' ? (
-                            <div className="w-full h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative">
-                                {/* Simulated Webpage Header */}
-                                <div className="h-8 bg-gray-100 border-b border-gray-200 flex items-center px-4 gap-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-                                    <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-2">Visual Theme</label>
+                                    <select
+                                        value={theme}
+                                        onChange={(e) => setTheme(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl text-sm capitalize"
+                                    >
+                                        <option value="light">Classic Light</option>
+                                        <option value="dark">Pro Dark</option>
+                                        <option value="ocean">Ocean Pulse</option>
+                                        <option value="cyberpunk">Cybernetic</option>
+                                        <option value="notion">Notion Style</option>
+                                    </select>
                                 </div>
-                                {/* User's Simulated Website Body */}
-                                <div className="p-6 h-full overflow-y-auto">
-                                    <div className="h-4 w-3/4 bg-gray-100 rounded mb-4"></div>
-                                    <div className="h-4 w-1/2 bg-gray-100 rounded mb-8"></div>
+                                <div>
+                                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-2">Language</label>
+                                    <select
+                                        value={lang}
+                                        onChange={(e) => setLang(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl text-sm"
+                                    >
+                                        <option value="en">English (US)</option>
+                                        <option value="es">Español</option>
+                                        <option value="fr">Français</option>
+                                        <option value="de">Deutsch</option>
+                                    </select>
+                                </div>
+                            </div>
 
-                                    {/* Script Simulation Container */}
-                                    <div className="border-2 border-dashed border-primary/30 p-4 rounded-xl relative">
-                                        <div className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-primary tracking-widest uppercase">Your Widget</div>
-                                        <div className="space-y-4">
-                                            {selectedBlogId === 'all' ? (
-                                                blogs.slice(0, 2).map((b, i) => (
-                                                    <div key={i} className={`p-4 rounded-lg bg-gray-50 ${theme !== 'light' ? 'bg-gray-900 border-gray-800' : 'border border-gray-100'}`}>
-                                                        <div className={`h-4 w-2/3 rounded mb-2 ${theme !== 'light' ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-                                                        <div className={`h-3 w-full rounded ${theme !== 'light' ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className={`p-4 rounded-lg bg-gray-50 ${theme !== 'light' ? 'bg-gray-900 border-gray-800' : 'border border-gray-100'}`}>
-                                                    <div className={`h-6 w-3/4 rounded mb-3 ${theme !== 'light' ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-                                                    <div className={`h-3 w-full rounded mb-1.5 ${theme !== 'light' ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
-                                                    <div className={`h-3 w-5/6 rounded ${theme !== 'light' ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
-                                                </div>
-                                            )}
-                                        </div>
+                            <div className="space-y-3 pt-2">
+                                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Display Options</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <button onClick={() => setShowDate(!showDate)} className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${showDate ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                                        Date
+                                    </button>
+                                    <button onClick={() => setShowAuthor(!showAuthor)} className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${showAuthor ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                                        Author
+                                    </button>
+                                    <button onClick={() => setShowSummary(!showSummary)} className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${showSummary ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                                        Summary
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6 overflow-hidden">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                Embed Snippet
+                            </h3>
+                            <button onClick={copyToClipboard} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors">
+                                Copy Code
+                            </button>
+                        </div>
+                        <div className="flex bg-gray-50 p-1 rounded-xl mb-4 border border-gray-100">
+                            <button onClick={() => setEmbedMode('static')} className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${embedMode === 'static' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>HTML Script</button>
+                            <button onClick={() => setEmbedMode('dynamic')} className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all ${embedMode === 'dynamic' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>REST API</button>
+                        </div>
+                        <pre className="p-4 bg-gray-950 text-indigo-400 rounded-xl text-[11px] overflow-x-auto border border-gray-800 font-mono leading-relaxed min-h-[120px]">
+                            {generateSnippet()}
+                        </pre>
+                    </div>
+                </div>
+
+                {/* Preview Rail */}
+                <div className="xl:col-span-7 space-y-6">
+                    <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm p-8 min-h-[600px] flex flex-col relative overflow-hidden">
+                        <div className="absolute top-6 left-6 flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Live Widget Preview</span>
+                        </div>
+
+                        <div className="flex-1 flex flex-col items-center justify-center pt-8">
+                            <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl transition-all duration-500 ${theme === 'dark' ? 'bg-gray-900 border-gray-800' : theme === 'cyberpunk' ? 'bg-black border-yellow-500 border-2' : 'bg-white border border-gray-100'}`} style={{ borderBottom: `4px solid ${theme === 'notion' ? '#E5E7EB' : '#4F46E5'}` }}>
+                                {/* Widget Header Simulation */}
+                                <div className={`h-14 px-6 flex items-center justify-between border-b ${theme === 'dark' ? 'border-gray-800' : 'border-gray-50'}`}>
+                                    <div className="h-5 w-24 bg-indigo-50/50 rounded-lg"></div>
+                                    <div className="flex gap-2">
+                                        <div className="w-8 h-8 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/30"></div>
                                     </div>
                                 </div>
+
+                                <div className="p-7 space-y-6">
+                                    {selectedBlogId === 'all' ? (
+                                        blogs.slice(0, 2).map((b, i) => (
+                                            <div key={i} className="group cursor-default">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    {showDate && <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">{new Date().toLocaleDateString()}</span>}
+                                                    {showAuthor && <span className="text-[10px] font-bold text-gray-400 px-2 py-0.5 bg-gray-50 rounded-full italic">by CMSPro Creator</span>}
+                                                </div>
+                                                <h4 className={`text-lg font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-tight`}>{b.title}</h4>
+                                                {showSummary && <p className="text-sm text-gray-400 line-clamp-2 leading-relaxed">PublishPro's advanced analytics engine allows you to track content performance in real-time across your entire network...</p>}
+                                                <div className="mt-4 flex gap-2">
+                                                    <div className="h-2 w-16 bg-indigo-500/20 rounded-full"></div>
+                                                    <div className="h-2 w-16 bg-indigo-500/10 rounded-full"></div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-3">
+                                                {showDate && <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">{new Date().toLocaleDateString()}</span>}
+                                                {showAuthor && <span className="text-[11px] font-bold text-gray-400 px-2 py-0.5 bg-gray-50 rounded-full italic">by CMSPro Creator</span>}
+                                            </div>
+                                            <h4 className={`text-2xl font-black mb-4 ${theme === 'dark' || theme === 'cyberpunk' ? 'text-white' : 'text-gray-900'} leading-tight`}>{blogs.find(b => b.id === selectedBlogId || b._id === selectedBlogId)?.title || 'Selected Article'}</h4>
+                                            {showSummary && <p className="text-base text-gray-400 leading-relaxed">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>}
+                                            <div className="mt-8 flex gap-3">
+                                                <button className="px-6 py-2.5 bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/30">Read Article</button>
+                                                <button className="px-6 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold">Share</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className={`p-4 bg-gray-50/50 text-[10px] text-center font-bold text-gray-400 border-t ${theme === 'dark' ? 'border-gray-800 bg-gray-900/50' : 'border-gray-50'}`}>
+                                    POWERED BY PUBLISHPRO ENGAGEMENT ENGINE
+                                </div>
                             </div>
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900 rounded-xl font-mono text-xs text-emerald-400 p-6 shadow-inner">
-                                <Activity size={32} className="mb-4 text-emerald-500 opacity-50" />
-                                <p className="mb-2 opacity-70">// Raw Data Stream Ready</p>
-                                <p>Status: <span className="text-white">200 OK</span></p>
-                                <p>Endpoint: <span className="text-white">/api/public/blogs{selectedBlogId !== 'all' ? `/${selectedBlogId}` : ''}</span></p>
-                                <p className="mt-4 animate-pulse">Waiting for client request...</p>
+
+                            <div className="mt-12 w-full max-w-lg">
+                                <div className="flex items-center gap-3 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+                                    <div className="p-2 bg-indigo-500 text-white rounded-lg"></div>
+                                    <p className="text-[11px] font-medium text-indigo-700">This widget will automatically synchronize with your brand settings defined in the <span className="font-bold underline cursor-pointer" onClick={() => setView('branding')}>Brand tab</span>.</p>
+                                </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1099,7 +1267,7 @@ function BusinessToolkit({ blogs, client, onRegenerate }) {
 function AdminClientsSection({ clients, onRefresh }) {
     const updateTier = async (id, tier) => {
         try {
-            await axios.put(`/api/admin/clients/${id}/tier`, { tier });
+            await api.put(`/api/admin/clients/${id}/tier`, { tier });
             onRefresh();
         } catch (err) {
             console.error(err);
@@ -1153,16 +1321,27 @@ function AdminClientsSection({ clients, onRefresh }) {
 }
 
 function BrandSettingsSection({ client, onSave }) {
-    const [logoUrl, setLogoUrl] = useState(client.brandSettings?.logoUrl || '');
-    const [primaryColor, setPrimaryColor] = useState(client.brandSettings?.primaryColor || '#4f46e5');
-    const [footerText, setFooterText] = useState(client.brandSettings?.footerText || '');
+    const bs = client.brandSettings || {};
+    const [logoUrl, setLogoUrl] = useState(bs.logoUrl || '');
+    const [primaryColor, setPrimaryColor] = useState(bs.primaryColor || '#4f46e5');
+    const [secondaryColor, setSecondaryColor] = useState(bs.secondaryColor || '#7c3aed');
+    const [fontFamily, setFontFamily] = useState(bs.fontFamily || 'Inter');
+    const [tagline, setTagline] = useState(bs.tagline || '');
+    const [footerText, setFooterText] = useState(bs.footerText || '');
+    const [websiteUrl, setWebsiteUrl] = useState(bs.websiteUrl || '');
+    const [twitter, setTwitter] = useState(bs.socialLinks?.twitter || '');
+    const [linkedin, setLinkedin] = useState(bs.socialLinks?.linkedin || '');
+    const [instagram, setInstagram] = useState(bs.socialLinks?.instagram || '');
     const [saving, setSaving] = useState(false);
+
+    const fonts = ['Inter', 'Roboto', 'Poppins', 'Outfit', 'DM Sans', 'Nunito', 'Lato', 'Open Sans', 'Montserrat', 'Plus Jakarta Sans'];
 
     const handleSave = async () => {
         setSaving(true);
         try {
-            const res = await axios.put('/api/clients/me/branding', {
-                logoUrl, primaryColor, footerText
+            const res = await api.put('/api/clients/me/branding', {
+                logoUrl, primaryColor, secondaryColor, fontFamily, tagline, footerText, websiteUrl,
+                socialLinks: { twitter, linkedin, instagram }
             });
             onSave(res.data);
             alert('Branding updated successfully!');
@@ -1174,84 +1353,156 @@ function BrandSettingsSection({ client, onSave }) {
         }
     };
 
+    const inputClass = "w-full bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
+    const labelClass = "text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-1.5";
+
     return (
-        <div className="p-8 md:p-12 max-w-4xl mx-auto animate-fade-in">
-            <h2 className="text-4xl font-extrabold text-textMain tracking-tight mb-8">Brand Identity</h2>
-            <div className="glass-card-premium p-8 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Platform Logo URL</label>
-                        <input
-                            type="text"
-                            value={logoUrl}
-                            onChange={(e) => setLogoUrl(e.target.value)}
-                            className="w-full bg-surface border border-border px-4 py-3 rounded-xl text-sm"
-                            placeholder="https://example.com/logo.png"
-                        />
-                        <p className="text-[10px] text-textMuted mt-2 italic">SVG or PNG recommended (max height 40px).</p>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Primary Accent Color</label>
-                        <div className="flex gap-3">
-                            <input
-                                type="color"
-                                value={primaryColor}
-                                onChange={(e) => setPrimaryColor(e.target.value)}
-                                className="w-12 h-12 bg-transparent border-0 cursor-pointer p-0"
-                            />
-                            <input
-                                type="text"
-                                value={primaryColor}
-                                onChange={(e) => setPrimaryColor(e.target.value)}
-                                className="flex-1 bg-surface border border-border px-4 py-3 rounded-xl text-sm font-mono uppercase"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <label className="text-[10px] font-black text-textMuted uppercase tracking-widest block mb-2">Embed Footer Text</label>
-                    <input
-                        type="text"
-                        value={footerText}
-                        onChange={(e) => setFooterText(e.target.value)}
-                        className="w-full bg-surface border border-border px-4 py-3 rounded-xl text-sm"
-                        placeholder="Powered by [Your Brand]"
-                    />
-                </div>
-
-                <div className="pt-8 border-t border-border flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-8 rounded border border-border bg-gray-50 flex items-center justify-center overflow-hidden">
-                            {logoUrl ? <img src={logoUrl} alt="Preview" className="h-4 w-auto" /> : <span className="text-[8px] font-bold text-textMuted">Logo</span>}
-                        </div>
-                        <div className="w-8 h-8 rounded-full shadow-inner" style={{ backgroundColor: primaryColor }}></div>
-                    </div>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="btn-primary"
-                    >
-                        {saving ? 'Updating...' : 'Apply Identity'}
-                    </button>
-                </div>
+        <div className="p-6 md:p-10 max-w-5xl mx-auto animate-fade-in w-full mb-20">
+            <div className="mb-8">
+                <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Brand Identity</h2>
+                <p className="text-sm text-gray-500 mt-1">Customize how your brand appears across the platform and embedded widgets.</p>
             </div>
 
-            {/* Visual Context */}
-            <div className="mt-12 p-8 border border-dashed border-border rounded-3xl bg-surface/30">
-                <h4 className="text-xs font-black text-textMuted uppercase tracking-widest mb-6 text-center">Identity Applied in Widget</h4>
-                <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-border animate-pulse">
-                    <div className="h-12 px-4 shadow-sm flex items-center justify-between" style={{ borderBottom: `2px solid ${primaryColor}` }}>
-                        <div className="h-4 w-20 bg-gray-100 rounded"></div>
-                        <div className="w-6 h-6 rounded-full" style={{ backgroundColor: primaryColor }}></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column - Settings */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Visual Identity */}
+                    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                            <Zap size={16} className="text-indigo-500" /> Visual Identity
+                        </h3>
+                        <div className="space-y-5">
+                            <div>
+                                <label className={labelClass}>Logo URL</label>
+                                <input type="text" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} className={inputClass} placeholder="https://example.com/logo.png" />
+                                <p className="text-[10px] text-gray-400 mt-1">SVG or PNG recommended. Max height 40px.</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                <div>
+                                    <label className={labelClass}>Primary Color</label>
+                                    <div className="flex gap-2">
+                                        <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 bg-transparent border-0 cursor-pointer p-0 rounded-lg" />
+                                        <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className={`${inputClass} font-mono uppercase flex-1`} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Secondary Color</label>
+                                    <div className="flex gap-2">
+                                        <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className="w-10 h-10 bg-transparent border-0 cursor-pointer p-0 rounded-lg" />
+                                        <input type="text" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className={`${inputClass} font-mono uppercase flex-1`} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label className={labelClass}>Font Family</label>
+                                <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} className={inputClass}>
+                                    {fonts.map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                            </div>
+                        </div>
                     </div>
-                    <div className="p-4 space-y-3">
-                        <div className="h-2 w-full bg-gray-50 rounded"></div>
-                        <div className="h-2 w-[80%] bg-gray-50 rounded"></div>
-                        <div className="h-2 w-[60%] bg-gray-50 rounded"></div>
+
+                    {/* Brand Voice */}
+                    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                            <MessageSquare size={16} className="text-indigo-500" /> Brand Voice
+                        </h3>
+                        <div className="space-y-5">
+                            <div>
+                                <label className={labelClass}>Tagline</label>
+                                <input type="text" value={tagline} onChange={e => setTagline(e.target.value)} className={inputClass} placeholder="Your brand in one sentence" />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Widget Footer Text</label>
+                                <input type="text" value={footerText} onChange={e => setFooterText(e.target.value)} className={inputClass} placeholder="Powered by [Your Brand]" />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Website URL</label>
+                                <input type="url" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} className={inputClass} placeholder="https://yourbrand.com" />
+                            </div>
+                        </div>
                     </div>
-                    <div className="p-3 bg-gray-50 text-[8px] text-center font-bold" style={{ color: primaryColor }}>
-                        {footerText || 'LexiBlog Platform'}
+
+                    {/* Social Presence */}
+                    <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                            <Globe size={16} className="text-indigo-500" /> Social Presence
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label className={labelClass}>Twitter / X</label>
+                                <input type="text" value={twitter} onChange={e => setTwitter(e.target.value)} className={inputClass} placeholder="@handle" />
+                            </div>
+                            <div>
+                                <label className={labelClass}>LinkedIn</label>
+                                <input type="text" value={linkedin} onChange={e => setLinkedin(e.target.value)} className={inputClass} placeholder="linkedin.com/in/you" />
+                            </div>
+                            <div>
+                                <label className={labelClass}>Instagram</label>
+                                <input type="text" value={instagram} onChange={e => setInstagram(e.target.value)} className={inputClass} placeholder="@handle" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Save */}
+                    <div className="flex justify-end">
+                        <button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-500/25 hover:-translate-y-0.5 transition-all disabled:opacity-50">
+                            {saving ? 'Saving...' : 'Save Brand Settings'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Right Column - Live Preview */}
+                <div className="lg:col-span-1">
+                    <div className="sticky top-8 space-y-5">
+                        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Live Preview</h4>
+                            <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ fontFamily: fontFamily }}>
+                                <div className="h-10 px-3 flex items-center justify-between" style={{ borderBottom: `2px solid ${primaryColor}` }}>
+                                    {logoUrl ? (
+                                        <img src={logoUrl} alt="Logo" className="h-5 w-auto" />
+                                    ) : (
+                                        <div className="h-4 w-16 bg-gray-100 rounded"></div>
+                                    )}
+                                    <div className="w-5 h-5 rounded-full" style={{ backgroundColor: primaryColor }}></div>
+                                </div>
+                                <div className="p-3 space-y-2">
+                                    {tagline && <p className="text-[9px] font-medium text-gray-500 italic">{tagline}</p>}
+                                    <div className="h-2 w-full bg-gray-50 rounded"></div>
+                                    <div className="h-2 w-[75%] bg-gray-50 rounded"></div>
+                                    <div className="h-2 w-[50%] bg-gray-50 rounded"></div>
+                                    <div className="mt-3 flex gap-1">
+                                        <div className="h-5 w-12 rounded text-white text-[7px] flex items-center justify-center font-bold" style={{ backgroundColor: primaryColor }}>Read</div>
+                                        <div className="h-5 w-12 rounded text-white text-[7px] flex items-center justify-center font-bold" style={{ backgroundColor: secondaryColor }}>Share</div>
+                                    </div>
+                                </div>
+                                <div className="p-2 text-[8px] text-center font-semibold" style={{ backgroundColor: '#f9fafb', color: primaryColor }}>
+                                    {footerText || 'Powered by CMSPro'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Color Palette Preview */}
+                        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Color Palette</h4>
+                            <div className="flex gap-2">
+                                <div className="flex-1 h-12 rounded-xl shadow-inner flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
+                                    <span className="text-white text-[9px] font-bold">Primary</span>
+                                </div>
+                                <div className="flex-1 h-12 rounded-xl shadow-inner flex items-center justify-center" style={{ backgroundColor: secondaryColor }}>
+                                    <span className="text-white text-[9px] font-bold">Secondary</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Font Preview */}
+                        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Typography</h4>
+                            <div style={{ fontFamily: fontFamily }}>
+                                <p className="text-lg font-bold text-gray-900">{fontFamily}</p>
+                                <p className="text-xs text-gray-400 mt-1">The quick brown fox jumps over the lazy dog.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

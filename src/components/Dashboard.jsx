@@ -713,7 +713,7 @@ function FeedSection() {
 
     const fetchFeed = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/feed');
+            const res = await axios.get('/api/feed');
             setFeed(res.data);
         } catch (e) { console.error(e); }
         setLoading(false);
@@ -723,14 +723,14 @@ function FeedSection() {
 
     const toggleLike = async (id) => {
         try {
-            const res = await axios.post(`http://localhost:5000/api/blogs/${id}/like`);
+            const res = await axios.post(`/api/blogs/${id}/like`);
             setFeed(feed.map(b => b.id === id ? { ...b, likes: res.data } : b));
         } catch (e) { console.error(e); }
     };
 
     const loadComments = async (id) => {
         try {
-            const res = await axios.get(`http://localhost:5000/api/blogs/${id}/comments`);
+            const res = await axios.get(`/api/blogs/${id}/comments`);
             setComments({ ...comments, [id]: res.data });
             setActiveCommentPost(activeCommentPost === id ? null : id);
         } catch (e) { console.error(e); }
@@ -739,7 +739,7 @@ function FeedSection() {
     const submitComment = async (id) => {
         if (!commentText.trim()) return;
         try {
-            const res = await axios.post(`http://localhost:5000/api/blogs/${id}/comments`, { text: commentText });
+            const res = await axios.post(`/api/blogs/${id}/comments`, { text: commentText });
             const list = comments[id] || [];
             setComments({ ...comments, [id]: [res.data, ...list] });
             setCommentText('');

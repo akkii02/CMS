@@ -220,7 +220,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         try {
             const userData = JSON.parse(localStorage.getItem('user'));
             const token = userData?.token;
-            const res = await axios.post('http://localhost:5000/api/ai/suggest-titles', { prompt: aiPrompt }, {
+            const res = await axios.post('/api/ai/suggest-titles', { prompt: aiPrompt }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setSuggestedTitles(res.data.titles);
@@ -240,7 +240,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         try {
             const userData = JSON.parse(localStorage.getItem('user'));
             const token = userData?.token;
-            const res = await axios.post('http://localhost:5000/api/ai/generate-blog', { title: selectedAiTitle }, {
+            const res = await axios.post('/api/ai/generate-blog', { title: selectedAiTitle }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setAiGeneratedContent(res.data.contentHtml);
@@ -260,7 +260,7 @@ export default function Editor({ initialData, onSave, onCancel }) {
         try {
             const userData = JSON.parse(localStorage.getItem('user'));
             const token = userData?.token;
-            const res = await axios.post('http://localhost:5000/api/ai/batch-generate', { prompt: aiPrompt, count: 5 }, {
+            const res = await axios.post('/api/ai/batch-generate', { prompt: aiPrompt, count: 5 }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             alert(res.data.message);

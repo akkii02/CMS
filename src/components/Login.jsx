@@ -14,14 +14,15 @@ export default function Login({ onLogin }) {
         setLoading(true);
 
         const url = mode === 'login'
-            ? '/api/auth/login'
-            : '/api/auth/register';
+            ? 'https://cms-backend-csry.onrender.com/api/auth/login'
+            : 'https://cms-backend-csry.onrender.com/api/auth/register';
 
         const body = mode === 'login'
             ? { email, password }
             : { email, password, companyName };
 
         try {
+            console.log("url", url);
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
